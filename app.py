@@ -10,6 +10,11 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///test.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
+api = Api(app)
+api.app.config['RESTX_JSON'] = {'ensure_ascii': False, 'indent': 4}
+
+movies_ns = api.namespace('movies')
+
 
 class Movie(db.Model):
     __tablename__ = 'movie'
@@ -24,10 +29,27 @@ class Movie(db.Model):
     director_id = db.Column(db.Integer, db.ForeignKey("director.id"))
     director = db.relationship("Director")
 
+
+class MoviesSchema(Schema):
+    id = fields.Int()
+    title = fields.Str()
+    description = fields.Str()
+    trailer = fields.Str()
+    year = fields.Int()
+    rating = fields.Float()
+    genre_id = fields.Int()
+    director_id = fields.Int()
+
+
 class Director(db.Model):
     __tablename__ = 'director'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255))
+
+
+class DirectorSchema(Schema):
+    id = fields.Int()
+    name = fields.Str()
 
 
 class Genre(db.Model):
@@ -35,6 +57,65 @@ class Genre(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255))
 
+
+class GenreSchema(Schema):
+    id = fields.Int()
+    name = fields.Str()
+
+
+@movies_ns.route('/')
+class MovieView(Resource):
+    def get(self):
+        director_id = request.args.get('director_id')
+        genre_id = request.args.get('genre_id')
+
+        movies = Movie.query
+
+        if director_id:
+            movies = movies.filter(Movie.director_id == director_id)
+        if genre_id:
+            movies = movies.filter(Movie.genre_id == genre_id)
+        movies = movies.all()
+        return MoviesSchema(many=True).dump(movies), 200
+
+    def post(self):
+        data = request.get_json()
+        new_movie = Movie(**data)
+        db.session.add(new_movie)
+        db.session.commit()
+        db.session.close()
+
+        return '', 201
+
+
+@movies_ns.route('/<int:bid>')
+class MovieView(Resource):
+    def get(self, bid):
+        movie = Movie.query.get(bid)
+        return MoviesSchema().dump(movie), 200
+
+    def put(self, bid):
+        data = request.get_json()
+        movie = Movie.query.get(bid)
+        movie.id = data['id']
+        movie.title = data['title']
+        movie.description = data['description']
+        movie.trailer = data['trailer']
+        movie.year = data['year']
+        movie.rating = data['rating']
+        movie.genre_id = data['genre_id']
+        movie.director_id = data['director_id']
+
+        db.session.add(movie)
+        db.session.commit()
+        db.session.close()
+
+    def delete(self, bid):
+        movie = Movie.query.get(bid)
+
+        db.session.delete(movie)
+        db.session.commit()
+        db.session.close()
 
 
 if __name__ == '__main__':
